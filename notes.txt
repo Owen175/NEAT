@@ -1,0 +1,122 @@
+Could have a normal nn whose fitness function is the number of pixels above/below the current position ~5 moves in the future, and -infinity for death
+Won't work since the cost will not be differentiable
+
+Wikipedia:
+NEAT is a TWEANN (Topology and Weight Evolving Artificial Neural Network)
+
+Direct encoding - each connection and neuron is explicitly represented
+
+rtNEAT is for real time rather than generational adaptation
+
+The paper: https://nn.cs.utexas.edu/downloads/papers/stanley.ec02.pdf or https://nn.cs.utexas.edu/downloads/papers/stanley.cec02.pdf
+Competing conventions/permutation problem:
+If a network has nodes ABC, and another has CBA (functionally identical), when you combine them, there are two possible
+outcomes: ABA and CBC, both of which lose information. There are n! possible arrangements of nodes with n nodes, so this
+is a significant problem.
+
+Neat uses historical markers to show genes have historical connection, doing artificial synapsis based on this.
+
+It is best for the network to be as small as possible:
+This can be achieved either through having network size as a factor in the fitness function, or through starting off
+the network minimally and only growing when necessary. It is difficult to determine a good weighting for the former.
+
+
+Speciation (niching):
+Requires a compatability function to determine whether two genomes are in the same species
+Individuals with similar genomes share their fitness payoff (explicit fitness sharing)
+Therefore, the number of networks existing on a single fitness peak is limited by the peak size. Therefore,
+the population divides into a number of species each on a different peak, with no threat of one species taking over.
+Similarity is measured based on the historical information.
+Innovations are protected, meaning that a new innovation has time to become useful rather than being scrapped immediately.
+
+
+NEAT algorithm:
+2 types of structural mutation: add node and add connection.
+Each gene has a historical marker identifying the historical ancestor of the gene. New genes have higher numbers.
+The connection gene being split is disabled, and the new node is connected to both ends.
+
+Genomes are linear representations of network connectivity (linear.png). Each genome contains a list of connection
+genes, each of which connects two node genes. Node genes provide a list of inputs, hidden nodes and outputs to be
+connected. Each connection gene specifies the in-node, out-node, weight, whether it is expressed (enable bit) and an
+innovation number allowing finding of corresponding genes.
+
+Add node always splits an existing connection. The old one is disabled, and the connection going IN to the node gets a
+weight of 1 and the other gets the same weight of the previous connection. This minimises the mutation effect.
+Add connection adds a connection with a random weight.
+
+Gene tracking:
+The genes added are given global innovation numbers. As in linear.png, you can see that 7 is the mutation in the first,
+and 8 and 9 are the mutations in the second. You can see, therefore, that they broke off at innovation number 6.
+
+A list of the innovations occurring in the current generation is kept, ensuring that randomly identical innovations are
+not recorded separately.
+
+When crossing over, the genes in both genomes with the same innovation number are lined up (matching genes). Matching
+genes are either disjoint or excess, depending on whether they are within or outside the range of the other parent's
+innovation numbers.
+Genes are randomly chosen from each parent with matching genes, and excess/disjoint genes are always included from the
+more fit parent. If equal fitness, they are selected randomly as well.
+
+This mutation presents a problem - larger structures optimise slower, and adding nodes and connections initially
+decreases the fitness, therefore they would be lucky to survive a generation.
+
+Protecting Innovation:
+Speciating the population allows organisms to compete primarily within their own species rather than the population at
+large.
+δ = c1E/N + c2D/N + c3 * W(bar)
+E is the number of excess genes
+D is the number of disjoint genes
+W(bar) is the mean weight difference of matching genes including disabled genes
+c1, c2 and c3 are coefficients allowing adjustment of the importance of the three factors
+N can be 1 if both genomes are small (<20 genes)
+
+Speciation:
+Each species is represented by a random genome from the previous generation, and a given genome, g from the current
+generation is placed in the first species in which g is compatible with the representative genome of the species. If it
+is not compatible with nay, a new species is made with g as the representative.
+
+Explicit fitness sharing:
+A species must not become too big even if many organisms perform well, as organisms in the same species share fitness.
+For organism i, the adjusted fitness fi':
+fi' = fi/(sum{j=1,n}(sh(δ(i,j))))
+where j is the other organisms in the population
+sh() is the sharing function. It is set to 0 when the distance δ(i,j) is above the threshold δt otherwise it is 1.
+
+Each species is assigned a number of offspring proportionate to the sum of the f' of the member organisms.
+Species then reproduce by eliminating the worst performing members of the population, then replacing the population with
+the offspring of the remaining organisms of the species. If the population does not improve for 20 generations, only the
+top 2 species are allowed to reproduce
+
+This protects topological innovation.
+
+Tests:
+Building an XOR gate and balancing poles.
+All except Double Pole No Velocities (larger pop size changing other parameters too) used same settings:
+pop 150
+c1 = 1
+c2 = 1
+c3 = 0.4
+δt = 3
+If the max fitness did not improve for 15 generations, the networks in the stagnant species don't reproduce. The
+champion of each species with more than 5 networks was copied unchanged. For the rest, there was an 80% chance of a
+genome having its weights mutated, in which case each weight had a 90% chance of being uniformly perturbed and a 10%
+chance of it being assigned a new random value.
+There was a 75% chance an inherited gene was disabled if it was disabled in either parent.
+25% of offspring resulted from mutation without crossover.
+The interspecies mating rate was 0.001.
+In smaller populations, the probability of adding a new node was 0.03, and a new connection was 0.05
+For larger populations, it was 0.3, since they can tolerate more prospective species.
+At each node, a sigmoid function is used (1/(1+ e^-4.9x)) - it is close to linear between -0.5 and 0,5
+
+Experimental findings:
+links must be added more than nodes
+An average weight difference of 3.0 is roughly equivalent to a disjoint or excess gene
+
+XOR:
+Fitness was the distance of the output from the correct answer for all 4 input patterns, subtracting this error from 4
+and squaring it. Therefore, the higher the fitness, the better the structure.
+The initial generation had 2 inputs, 1 bias unit (input always set to 1.0) and one output.
+There was a connection between each input and the output, as well as between the bias unit and the output.
+Each connection received a random weight.
+The bias unit is used as a substitute for a bias for each node, as not every node needs one, and this speeds up the
+evolution, as it means that unnecessary searching is not done.
